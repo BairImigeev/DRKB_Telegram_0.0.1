@@ -4,6 +4,7 @@ import openai
 import time
 from io import BytesIO
 from aiogram.types import ChatActions, ContentType
+from aiogram.types import InputFile
 
 from bot.main import dp, bot
 from bot.keyboards.kb import *
@@ -12,6 +13,8 @@ from telegraph.aio import Telegraph
 import speech_recognition as sr
 # import pydub
 import ffmpeg
+from gtts import gTTS
+
 
 
 import aiogram.utils.markdown as md
@@ -461,14 +464,43 @@ async def handle_voice_message(message: types.Message):
     (ffmpeg
       .input(soundin)
       .output(soundout)
-      .run()
+      .run(overwrite_output = True)
     )
     recognizer = sr.Recognizer()
     with sr.AudioFile('out.wav') as source:
         audio = recognizer.record(source)
     try:
-        text = recognizer.recognize_google(audio, language="ru-RU")
-        await message.reply(text)
+        text_user = recognizer.recognize_google(audio, language="ru-RU")
+        resp = None
+        print(text_user)
+        user_print = {"role": "user", "content": text_user}
+        messages.append(user_print)
+        start_time = time.time()
+        while resp is None:
+            await bot.send_chat_action(message.chat.id, ChatActions.TYPING)
+            print(message)
+            print('пользователь : ', message.text)
+            response = openai.ChatCompletion.create(
+                model='gpt-3.5-turbo',
+                # 'text - davinci - 002',
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.6)
+            resp = response
+
+        elapsed_time = time.time() - start_time
+        text = resp['choices'][0]['message']['content']
+        print('bot : ', text)
+        tts = gTTS(text, lang='ru', tld='ru', slow=False)
+        tts.save('response.mp3')
+        with open('response.mp3', 'rb') as audio:
+            await bot.send_voice(chat_id=message.chat.id, voice=InputFile(audio))
+        # await bot.send_voice(chat_id=message.chat.id, voice=InputFile(audio))
+
+
+        # await bot.send_message(message.chat.id, text, reply_to_message_id=message.message_id)
+        print(f"Elapsed time: {elapsed_time:.2f} seconds")
+
     except sr.UnknownValueError:
         await message.reply("Извините, не удалось распознать голосовое сообщение")
     except sr.RequestError:
